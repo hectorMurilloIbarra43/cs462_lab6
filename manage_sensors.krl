@@ -2,22 +2,27 @@ ruleset manage_sensors{
     meta {
         shares  __testing, // for events
                 sensors,
-                children_temperatures
+                children_temperatures,
+                children_temperatures2
             
             
          use module io.picolabs.wrangler alias Wrangler
+         use module io.picolabs.subscription alias subscription
         
     }
     global{
         __testing = { "events":  [ 
-                                    { "domain": "sensor", "type": "new_sensor", "attrs": [ "sensor_name" ] },
-                                    {"domain": "sensor", "type": "unneeded_sensor", "attrs": ["sensor_name"] },
+                                    { "domain": "sensor", "type": "new_sensor", 
+                                      "attrs": [ "sensor_name" ] },
+                                    {"domain": "sensor", "type": "unneeded_sensor", 
+                                      "attrs": ["sensor_name"] },
                                     {"domain": "sensor", "type": "del_names"}
                                     
                                   ],
                       "queries": [  { "name": "__testing" },
                                     { "name": "sensors" },
-                                    {"name": "children_temperatures"}
+                                    {"name": "children_temperatures"},
+                                    {"name": "children_temperatures2"}
                                   ]
         }
         temp_threshold = 90
@@ -45,6 +50,19 @@ ruleset manage_sensors{
                     {}.put(y{"name"}, something)
             })
         }
+        children_temperatures2 = function(x){
+            sensor_subscriptions = subscription:established().filter(function(y){
+                y["Tx_role"] == "sensor"
+            });
+            //sensor_subscriptions.length().klog("the length");
+            //sensor_subscriptions[0]["Tx_role"].klog("WHAT IS Tx_role");
+            
+            sensor_subscriptions.map(function(y){
+                something =  http:get("http://localhost:8080/sky/cloud/" + 
+                y["Tx"] + "/temperature_store/temperatures")["content"].decode().klog();
+                {}.put(y["Tx_role"],something)
+            });
+        }
     }
     
     rule create_sensor {
@@ -64,7 +82,8 @@ ruleset manage_sensors{
                             "color":"#ffff00",
                             "rids": ["temperature_store",
                                       "wovyn_base",
-                                      "sensor_profile"]
+                                      "sensor_profile",
+                                      "io.picolabs.subscription"]
                 }
         }
     }   
@@ -90,7 +109,7 @@ ruleset manage_sensors{
             name = event:attr("name").klog();
             eci = event:attr("eci").klog();
         }
-        event:send({"eci":eci, 
+        event:send({"eci":eci, //child eci
                     "eid": "whatevs",
                     "domain": "sensor", 
                     "type": "profile_updated",
@@ -104,6 +123,14 @@ ruleset manage_sensors{
         
         always{
             ent:sensors := ent:sensors.set([name],eci);
+            raise wrangler event "subscription"
+                attributes { "name": name,
+                                   "Rx_role": "manager",
+                                   "Tx_role": "sensor",
+                                   "channel_type": "subscription",
+                                   "wellKnown_Tx": eci }
+                
+            
         }
     }
     
@@ -114,8 +141,42 @@ ruleset manage_sensors{
             clear ent:sensors
         }
     }
+    
+    rule mischief_who {
+        select when mischief who
+        pre {
+            mischief = event:attr("eci")
+            mischief_name = event:attr("name")
+            
+            le_host = event:attr("host")
+            connecting_to = event:attr("connecting_to")
+        }
+        event:send(
+        { "eci": mischief, "eid": "subscription",
+            "domain": "wrangler", "type": "subscription",
+            "attrs": { "name": "thing" + (index.as("Number")+1),
+                      "Rx_role":mischief_name,
+                      "Tx_role": "sensor",
+                      "channel_type": "subscription",
+                      "wellKnown_Tx": connecting_to } }, host = le_host )
+        always {
+            //ent:mischief := mischief;
+            //ent:mischief_name := mischief_name;
+        }
+    }
+    // rule mischief_subscriptions {
+    //     select when mischief subscriptions
+    //         // introduce mischief pico to thing[index] pico
+    //         event:send(
+    //             { "eci": ent:mischief, "eid": "subscription",
+    //                 "domain": "wrangler", "type": "subscription",
+    //                 "attrs": { "name": "thing" + (index.as("Number")+1),
+    //                           "Rx_role":ent:mischief_name,
+    //                           "Tx_role": "sensor",
+    //                           "channel_type": "subscription",
+    //                           "wellKnown_Tx": thing } }, host = "" )
+    //     }
 }
-
 
 
 

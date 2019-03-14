@@ -16,12 +16,21 @@ ruleset temperature_store{
     }
 
     global{
-          __testing = { "queries": [ { "name": "__testing" },
-                               { "name": "temperatures" },
-                               { "name": "threshold_violations" },
-                               {"name":"inrange_temperatures"},
-                               {"name":"get_current_temp"}
-                               ]
+          __testing = { "events":  [ 
+                                      { "domain": "wovyn", 
+                                      "type": "new_temperature_reading", 
+                                      "attrs": [ 
+                                                  "temperature",
+                                                  "timestamp"
+                                                  ] }
+                                        ],
+            
+                        "queries": [ { "name": "__testing" },
+                                     { "name": "temperatures" },
+                                     { "name": "threshold_violations" },
+                                     {"name":"inrange_temperatures"},
+                                     {"name":"get_current_temp"}
+                                    ]
           }
           
         get_current_temp = function(){
@@ -40,7 +49,9 @@ ruleset temperature_store{
         
         inrange_temperatures = function(){
           // difference (A/B). The set of all members of A that are not members of B
-            ent:all_temps.difference(ent:all_violations)
+            //ent:all_temps.difference(ent:all_violations)
+             ent:all_temps.filter(function(x){x["temp"] <= sensor_profile:get_temp_threshold()})
+            
         }
         
     }

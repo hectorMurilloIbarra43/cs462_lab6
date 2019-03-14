@@ -14,12 +14,22 @@ ruleset sensor_profile {
             
     }
     global{
-          __testing = { "queries": [ { "name": "__testing" },
-                               { "name": "get_location" },
-                               { "name": "get_name" },
-                               { "name":"get_temp_threshold"},
-                               {  "name":"get_to_number"}
-                               ]
+          __testing = { "events":  [ 
+                                      { "domain": "sensor", 
+                                        "type": "profile_updated", 
+                                        "attrs": [ 
+                                                    "location",
+                                                    "name",
+                                                    "temp_threshold",
+                                                    "to_number"
+                                                  ] }
+                              ],
+                        "queries": [ { "name": "__testing" },
+                                     { "name": "get_location" },
+                                     { "name": "get_name" },
+                                     { "name":"get_temp_threshold"},
+                                     {  "name":"get_to_number"}
+                                  ]
                       }      
         get_location = function(){
           ent:location.defaultsTo("room")
@@ -59,6 +69,17 @@ ruleset sensor_profile {
             ent:temp_threshold := temp_threshold;
             ent:to_number := to_number;
         }
+    }
+    
+    rule auto_accept_subscriptions {
+        select when wrangler inbound_pending_subscription_added
+        pre {
+          attributes = event:attrs.klog("subcription:")
+        }
+        always {
+          raise wrangler event "pending_subscription_approval"
+            attributes attributes
+        }        
     }
 }
 

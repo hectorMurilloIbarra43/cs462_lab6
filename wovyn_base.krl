@@ -1,14 +1,25 @@
 ruleset wovyn_base {
     meta {
+       shares __testing
+      
         use module io.picolabs.lesson_keys
         use module io.picolabs.twilio_v2 alias twilio
             with account_sid = keys:twilio{"account_sid"}
                  auth_token  = keys:twilio{"auth_token"}
         use module sensor_profile
-    
+        use module io.picolabs.subscription alias subscription
     }
     global{
         from = 17634529729
+        __testing = { "events":  [ 
+                                    { "domain": "wovyn", 
+                                    "type": "new_temperature_reading", 
+                                    "attrs": [ 
+                                                "temperature",
+                                                "timestamp"
+                                                ] }
+                                      ]
+        }        
 
     }
     rule hearbeat{
@@ -32,16 +43,43 @@ ruleset wovyn_base {
     }
     rule find_high_temps{
         select when wovyn new_temperature_reading
-        pre{
-            temperature = event:attr("temperature")
-            timestamp = event:attr("timestamp")
-        }
-        if temperature > sensor_profile:get_temp_threshold() then
-            send_directive("there was a threshold violation")
-        fired {
-            raise wovyn event "threshold_violation"
-                attributes {"temperature":temperature, "timestamp":timestamp}
-        }
+        foreach subscription:established("Tx_role","manager").klog("the subbbbbbbbbbbbbbbbbb") setting (subscription)
+            pre{
+                temperature = event:attr("temperature")
+                timestamp = event:attr("timestamp")
+            }
+            if temperature > sensor_profile:get_temp_threshold() then
+        //     event:send({"eci":eci, //child eci
+        //             "eid": "whatevs",
+        //             "domain": "sensor", 
+        //             "type": "profile_updated",
+        //             "attrs":  {
+        //                           "name" :name,
+        //                           "to_number": 7633505859,
+        //                           "temp_threshold": temp_threshold,
+        //                           "location": "room"
+        //                       }
+        // })
+        
+            
+                event:send(
+                    { "eci": subscription{"Tx"}, 
+                      "eid": "hat-lifted",
+                      "domain": "send", 
+                      "type": "threshold_violation_sms",
+                      "attrs":  {
+                                  "from": from,
+                                  "message": "Warning: GPU temperature is" + temperature + "C: exceeding threshold of" + sensor_profile:get_temp_threshold() + "C"
+                              }
+                      
+                    }, 
+                    host=subscription["Tx_host"]
+                )
+            fired {
+              
+                // raise wovyn event "threshold_violation"
+                //     attributes {"temperature":temperature, "timestamp":timestamp}
+            }
         else{
             // nothing here i suppose
         }
@@ -61,9 +99,6 @@ ruleset wovyn_base {
 
     }
 }
-
-
-
 
 
 
