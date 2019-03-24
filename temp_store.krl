@@ -12,7 +12,8 @@ ruleset temperature_store{
             inrange_temperatures,
             get_current_temp
           
-        use module sensor_profile            
+        use module sensor_profile   
+        use module io.picolabs.subscription alias subscription
     }
 
     global{
@@ -22,8 +23,14 @@ ruleset temperature_store{
                                       "attrs": [ 
                                                   "temperature",
                                                   "timestamp"
-                                                  ] }
-                                        ],
+                                                  ] },
+                                        {"domain":"sensor",
+                                          "type":"generate_report",
+                                          "attrs":[
+                                                "report_id"
+                                            ]
+                                        }
+                                    ],
             
                         "queries": [ { "name": "__testing" },
                                      { "name": "temperatures" },
@@ -88,7 +95,49 @@ ruleset temperature_store{
           
         }
     }
+        // event:send({"eci":eci, //child eci
+        //             "eid": "whatevs",
+        //             "domain": "sensor", 
+        //             "type": "profile_updated",
+        //             "attrs":  {
+        //                           "name" :name,
+        //                           "to_number": 7633505859,
+        //                           "temp_threshold": temp_threshold,
+        //                           "location": "room"
+        //                       }
+        // })    
+        // children_temperatures2 = function(x){
+        //     sensor_subscriptions = subscription:established().filter(function(y){
+        //         y["Tx_role"] == "sensor"
+        //     });
+                    
+    rule generate_report {
+        select when sensor generate_report
+            foreach subscription:established().filter(function(x){
+                                                  x["Tx_role"] == "manager"
+                                              }) setting (y)
+                                              
+            pre{
+                report_id = event:attr("report_id")
+            }
+            event:send(
+                    {
+                        "eci" : y["Tx"],
+                        "domain" :"manager",
+                        "type": "collect_reports",
+                        "attrs": {
+                            "temps":ent:all_temps.klog("all temps being returnedddddddd"),
+                            "report_id":report_id
+                        }
+                    }    
+                )
+            always{
+            }
+                
+    }
 }
+
+
 
 
 

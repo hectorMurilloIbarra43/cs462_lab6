@@ -3,7 +3,10 @@ ruleset manage_sensors{
         shares  __testing, // for events
                 sensors,
                 children_temperatures,
-                children_temperatures2
+                children_temperatures2,
+                children_temperatures3,
+                generate_temp_report,
+                clear_reports
             
             
          use module io.picolabs.wrangler alias Wrangler
@@ -16,13 +19,17 @@ ruleset manage_sensors{
                                       "attrs": [ "sensor_name" ] },
                                     {"domain": "sensor", "type": "unneeded_sensor", 
                                       "attrs": ["sensor_name"] },
-                                    {"domain": "sensor", "type": "del_names"}
+                                    {"domain": "sensor", "type": "del_names"},
+                                    {"domain":"manager", "type":"report_needed"},
+                                    {"domain":"manager","type":"clear_reports"}
                                     
                                   ],
                       "queries": [  { "name": "__testing" },
                                     { "name": "sensors" },
                                     {"name": "children_temperatures"},
-                                    {"name": "children_temperatures2"}
+                                    {"name": "children_temperatures2"},
+                                    {"name": "children_temperatures3"},
+                                    {"name": "generate_temp_report"},                                    
                                   ]
         }
         temp_threshold = 90
@@ -54,14 +61,62 @@ ruleset manage_sensors{
             sensor_subscriptions = subscription:established().filter(function(y){
                 y["Tx_role"] == "sensor"
             });
-            //sensor_subscriptions.length().klog("the length");
-            //sensor_subscriptions[0]["Tx_role"].klog("WHAT IS Tx_role");
             
             sensor_subscriptions.map(function(y){
                 something =  http:get("http://localhost:8080/sky/cloud/" + 
                 y["Tx"] + "/temperature_store/temperatures")["content"].decode().klog();
                 {}.put(y["Tx_role"],something)
             });
+        }
+        
+// a = {"a": 3, "b": 4, "c": 5};
+// c = a.filter(function(v,k){v < 5})    // c = {"a": 3, "b": 4}
+// d = a.filter(function(v,k){k == "a"}) // d = {"a": 3}        
+        children_temperatures3 = function(x){
+            total_reports = ent:report.length();
+            num_subscriptions = subscription:established().filter(function(y){
+                y["Tx_role"] == "sensor"
+            }).length();
+            report_len = total_reports/num_subscriptions;
+            report_len.klog("report_len");
+            
+            
+            temperatures = {};
+            ent:report.filter(function(y){
+              // y.klog("yyyyyyyyyyyyyyyyy");
+              y.filter(function(v,k){
+                  k > (report_len - 6);
+                  // k.klog("kkkkkkkkkkkkkkkkkk");
+                  // v.klog("vvvvvvvvvvvvvvvvv")
+                  temperatures.append(v).klog("temperatures")
+                  
+              }).klog("yyyyyyyyyyyyyy")
+              
+            });
+            
+            temperatures = temperatures.put("temperature_sensors",num_subscriptions);
+            temperatures = temperatures.put("responding", num_subscriptions);
+            temperatures = temperatures.put("temperatures", ent:report.filter(function(y){
+                le_keys = y.keys().klog("le keysssssssssssssssssss");
+                le_keys[0] > (report_len - 6)
+            }));
+            temperatures
+        }
+        
+// a = [3, 4, 5];
+// c = a.filter(function(x){x<5}) // c = [3, 4]
+        generate_temp_report = function(x){
+            ent:reports.filter(function(y){
+                 y["report_id"]
+            })   
+        }
+        
+        generate_all_temps_report = function(x){
+            ent:reports.map(function(y)
+            {
+              // z = (x > y) => y | x
+                generate_temp_report(y)
+            })
         }
     }
     
@@ -138,7 +193,9 @@ ruleset manage_sensors{
         select when sensor del_names
         
         always{
-            clear ent:sensors
+            clear ent:sensors;
+            //clear ent:report_id
+            
         }
     }
     
@@ -176,6 +233,85 @@ ruleset manage_sensors{
     //                           "channel_type": "subscription",
     //                           "wellKnown_Tx": thing } }, host = "" )
     //     }
+    
+        // event:send({"eci":eci, //child eci
+        //             "eid": "whatevs",
+        //             "domain": "sensor", 
+        //             "type": "profile_updated",
+        //             "attrs":  {
+        //                           "name" :name,
+        //                           "to_number": 7633505859,
+        //                           "temp_threshold": temp_threshold,
+        //                           "location": "room"
+        //                       }
+        // })    
+    
+    rule report_needed {
+        select when manager report_needed
+            foreach subscription:established().filter(function(x){
+                                                          x["Tx_role"] == "sensor"
+                                                      }) setting (y)
+                event:send(
+                    {
+                        "eci" : y["Tx"],
+                        "domain" :"sensor",
+                        "type": "generate_report",
+                        "attrs": {
+                            "report_id": ent:report_id.defaultsTo(0).klog("bob")
+                            
+                        }
+                    }    
+                )
+                always{
+                    ent:report_id := ent:report_id.defaultsTo(0) + 1 on final 
+                    
+                }
+                
+                
+         
+                //             "report_id":ent:report_id.defaultsTo([0]).tail().klg,
+                // always{
+                //     ent:report_id := ent:report_id.append(ent:report_id.tail()+1) on final 
+                
+                
+    }
+    
+    rule clear_reports{
+        select when manager clear_reports
+        always{
+            clear ent:report;
+            clear ent:report_id;
+        }
+    }
+    //     rule clear_temeratures {
+    //     select when sensor reading_reset
+      
+    //     always{
+    //       clear ent:all_violations;
+    //       clear ent:all_temps 
+          
+    //     }
+    // }
+    
+    rule collect_reports {
+        select when manager collect_reports
+        pre{
+            num_responses = subscription:established().filter(function(x){
+                                                          x["Tx_role"] == "sensor"
+                                                      }).length();
+                                                      
+            report_id = event:attr("report_id").klog("report id")
+            child_report = event:attr("temps").klog("children report")
+            report = {}.put(report_id,child_report).klog("incoming report")
+            
+            // child_temperatures = {}.put(report_id, report)
+        }
+        always{
+            ent:report := ent:report.defaultsTo([]).append(report);
+            ent:report.klog("report finished")
+            
+        }
+    }
 }
 
 
